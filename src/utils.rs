@@ -32,3 +32,44 @@ pub fn masked_weighted_choice<T>(input: &[(T, usize)], mask: &BitVec) -> usize {
     }
     unreachable!();
 }
+
+trait Maskable<T>: Iterator<Item=T> + Sized {
+    fn masked<Mask>(self, Mask) -> Masked<Self, Mask::IntoIter>
+    where Mask: IntoIterator<Item=bool>;
+}
+
+impl<I, T> Maskable<T> for I where I: Iterator<Item=T> {
+
+    fn masked<Mask>(self, mask: Mask) -> Masked<Self, Mask::IntoIter>
+    where Mask: IntoIterator<Item=bool> {
+        Masked { items: self, mask: mask.into_iter() }
+    }
+
+}
+
+pub struct Masked<I, M> {
+    items: I
+  , mask: M
+}
+
+impl<I, M> Iterator for Masked<I, M>
+where I: Iterator
+    , M: Iterator<Item=bool>
+{
+    type Item=I::Item;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.mask.next()
+            .and_then(|m| if m == true {
+                // if the current element in the mask is true, return the
+                // corresponding item
+                self.items.next()
+            } else {
+                // if the current element in the mask is false, skip that
+                // element by advancing the items iterator past it
+                let _ = self.items.next();
+                // and skipping this iterator to the next item.
+                self.next()
+            })
+    }
+}
