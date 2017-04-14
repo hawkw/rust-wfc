@@ -1,7 +1,9 @@
 use ndarray::prelude::*;
 use rand::distributions::{Range, IndependentSample};
+use rand::distributions::range::SampleRange;
 use rand;
 use bit_vec::BitVec;
+use std::{iter, num, ops};
 
 
 pub fn rotate_90_clockwise<T: Copy>(image_data: &Array2<T>) -> Array2<T> {
@@ -9,7 +11,7 @@ pub fn rotate_90_clockwise<T: Copy>(image_data: &Array2<T>) -> Array2<T> {
     output.invert_axis(Axis(1));
     output.to_owned()
 }
-// 
+//
 // pub fn masked_weighted_choice<T>(input: &[(T, usize)], mask: &BitVec) -> usize {
 //     /// Returns an index from the slice of (T, u) where u is the integer weight, i.e.
 //     /// [(1, 3), (2, 1), (3, 1)] returns 0 (the index of 1) with probability 3/5
@@ -41,13 +43,14 @@ trait Maskable<T>: Iterator<Item=T> + Sized {
 impl<I, T> Maskable<T> for I where I: Iterator<Item=T> {
 
     fn masked<Mask>(self, mask: Mask) -> Masked<Self, Mask::IntoIter>
-    where Mask: IntoIterator<Item=bool> {
+    where Mask: IntoIterator<Item=bool>
+        , Mask::IntoIter: Iterator<Item=bool> {
         Masked { items: self, mask: mask.into_iter() }
     }
 
 }
 
-pub struct Masked<I, M> {
+pub struct Masked<I: Iterator, M: Iterator<Item=bool>> {
     items: I
   , mask: M
 }
@@ -74,21 +77,38 @@ where I: Iterator
     }
 }
 
-trait WeightedChoice<T, W>: Iterator<Item=(T, W)> {
-  fn weighted_choice(self) -> T;
-}
+// trait WeightedChoice<T, W> {
+//   fn weighted_choice(self) -> T;
+// }
+//
+// impl<T, W, I> WeightedChoice<T, W> for I
+// where for<'a> &'a I: IntoIterator<Item=(T, W)>
+//     , W: rand::Rng + num::Zero + iter::Sum<W> {
+//
+//     fn weighted_choice(self) -> T {
+//
+//     }
+// }
 
-impl<T, W, I> WeightedChoice<T, W> for I
-where I: Iterator<Item=(T, W)> {
+pub fn masked_weighted_choice<T, W, I, M>(items: &I, mask: &M) -> T
+where for<'a> &'a I: IntoIterator<Item=&'a (T, W)>
+    , for<'a> &'a M: IntoIterator<Item=bool>
+    , W: SampleRange + PartialOrd + num::Zero + ops::SubAssign + iter::Sum<W>
+    {
 
-  fn weighted_choice(self) -> T {
-    unimplemented!()
-  }
-}
+    let total = items.into_iter()
+                     .masked(mask.into_iter())
+                     .map(|& (_, weight)| weight)
+                     .sum();
+    let mut choice = Range::new(W::zero(), total)
+                      .ind_sample(&mut rand::thread_rng());
+    let masked_items = items.into_iter().masked(mask.into_iter());
 
-pub fn masked_weighted_choice<T, W, I, M>(items: I, mask: M) -> T
-where I: Iterator<Item = (T, W)>
-    , M: IntoIterator<Item=bool> {
-    items.masked(mask)
-         .weighted_choice()
+    for &(item, weight) in masked_items {
+        if choice < weight { return item }
+        choice -= weight;
+    }
+
+    unreachable!()
+
 }

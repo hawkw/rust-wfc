@@ -1,5 +1,5 @@
 #![allow(dead_code)]
-
+#![feature(zero_one)]
 extern crate bit_vec;
 extern crate png;
 extern crate ndarray;
